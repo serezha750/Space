@@ -11,7 +11,7 @@ ln -sfn /data/appdata /app/data
 mkdir -p /root/.openclaw/agents/main/agent \
          /root/.openclaw/credentials \
          /root/.openclaw/workspace/memory \
-         /app/data \
+         /app/data
 
 echo "执行数据恢复..."
 python3 /app/sync.py restore || echo "恢复失败，继续..."
@@ -22,7 +22,6 @@ if [ -n "${RCLONE_CONF:-}" ]; then
     chmod 600 ~/.config/rclone/rclone.conf
     echo "✓ rclone 配置已写入"
 fi
-
 
 echo "清理旧配置"
 CONFIG_PATH="/root/.openclaw/openclaw.json"
@@ -281,7 +280,6 @@ if [ $workersai_count -gt 0 ]; then
     auth_order=$(jq --argjson o "$workersai_order" '. + {"cloudflare-workers-ai": $o}' <<<"$auth_order")
 fi
 
-# ---------- 生成主配置 ----------
 base_config=$(jq -n \
     --arg primary "$DEFAULT_PRIMARY" \
     --argjson auth_order "$auth_order" \
@@ -355,7 +353,7 @@ done
 (
 while true; do
     now=$(date +%s)
-    this_hour_5min=$(date -d "$(date +%Y-%m-%d\ %H):10:00" +%s)
+    this_hour_5min=$(date -d "$(date +%Y-%m-%d\ %H):5:00" +%s)
     if [ "$now" -ge "$this_hour_5min" ]; then
         target_time=$(( this_hour_5min + 3600 ))
     else
@@ -364,7 +362,7 @@ while true; do
     sleep_time=$(( target_time - now ))
     echo "[GitHub] Current: $(date), Next run in $sleep_time s"
     sleep $sleep_time
-    python3 /app/GitHubActions.py
+    python3 /app/actions.py
 done
 ) &
 
@@ -398,7 +396,7 @@ http {
 
     server {
         listen 7860;
-        server_name _;
+        server_name localhost;
 
         if ($bad_bot) {
             return 403;
@@ -411,6 +409,18 @@ http {
 
         limit_req zone=anti_crawl burst=20 nodelay;
         limit_req_status 429;
+        location = /openlist {
+            return 301 /openlist/;
+        }
+
+        location /assets/ {
+            proxy_pass http://127.0.0.1:5244/assets/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Accept-Encoding "";
+        }
 
         location /openclaw {
             proxy_pass http://127.0.0.1:7861/;
@@ -435,19 +445,7 @@ http {
             proxy_set_header X-Forwarded-Host $host;
         }
 
-        location /assets/ {
-            proxy_pass http://127.0.0.1:5244/assets/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header Accept-Encoding "";
-            sub_filter_types application/javascript text/css;
-            sub_filter_once off;
-            sub_filter '"/assets/' '"/openlist/assets/';
-            sub_filter "'/assets/" "'/openlist/assets/";
-        }
-
+        # /openlist 路径 → OpenList (5244)
         location /openlist/static/ {
             proxy_pass http://127.0.0.1:5244/static/;
             proxy_set_header Host $host;
@@ -511,62 +509,6 @@ http {
             sub_filter 'href="/favicon' 'href="/openlist/favicon';
             sub_filter '"/assets/' '"/openlist/assets/';
             proxy_set_header Accept-Encoding "";
-        }
-
-        location = /ql {
-            return 301 /ql/;
-        }
-
-        location ^~ /ql/ {
-            proxy_pass http://127.0.0.1:5700;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header X-Forwarded-Prefix /ql;
-            proxy_set_header X-Script-Name /ql;
-            proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header Accept-Encoding "";
-        }
-
-        location ^~ /api/ {
-            proxy_pass http://127.0.0.1:5700;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header X-Forwarded-Prefix /ql;
-            proxy_set_header X-Script-Name /ql;
-            proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header Accept-Encoding "";
-        }
-
-        location ^~ /src__ {
-            proxy_pass http://127.0.0.1:5700;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location ^~ /umi. {
-            proxy_pass http://127.0.0.1:5700;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location = / {
-            return 302 /openlist/;
         }
     }
 }
